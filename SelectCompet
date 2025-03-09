@@ -1,0 +1,344 @@
+// ==UserScript==
+// @name         Sélection Compétitions
+// @namespace    http://tampermonkey.net/
+// @version      3.8
+// @description  Sélectionner une compétition ou une épreuve avec la barre d'espace, naviguer avec les flèches, revenir au menu avec "0", et adapter la largeur du menu à la plus longue ligne de texte.
+// @match        *://*/*
+// @grant        none
+// @run-at       document-end
+// ==/UserScript==
+
+(function () {
+    'use strict';
+
+    console.log("? Script chargé - Appuyez sur la barre d'espace pour afficher le menu.");
+
+    function isCompetitionPage() {
+        return document.querySelectorAll('#main table tbody tr td:nth-child(3)').length > 0;
+    }
+
+    function isEpreuvePage() {
+        return document.querySelectorAll('#main table tbody tr td:first-child').length > 0;
+    }
+
+    function saveSelectedCompetition(competitionName) {
+        localStorage.setItem('selectedCompetition', competitionName);
+    }
+
+    function getSelectedCompetition() {
+        return localStorage.getItem('selectedCompetition') || 'épreuve sélectionnée';
+    }
+
+    function closeSelectionMenu() {
+        let menu = document.getElementById('customSelectionMenu');
+        if (menu) {
+            menu.style.opacity = '0';
+            setTimeout(() => {
+                menu.remove();
+            }, 300);
+        }
+    }
+
+    // Mesure la largeur maximale du texte des options du select
+    function adaptSelectWidth(select) {
+        // Création d'un <span> caché pour mesurer le texte
+        const measureSpan = document.createElement('span');
+        measureSpan.style.visibility = 'hidden';
+        measureSpan.style.whiteSpace = 'pre'; // Respecte les espaces
+        document.body.appendChild(measureSpan);
+
+        let maxWidth = 0;
+        for (let i = 0; i < select.options.length; i++) {
+            measureSpan.textContent = select.options[i].text;
+            const w = measureSpan.offsetWidth;
+            if (w > maxWidth) {
+                maxWidth = w;
+            }
+        }
+        document.body.removeChild(measureSpan);
+
+        // Ajoute un peu de marge pour la flèche du select
+        select.style.width = (maxWidth + 30) + 'px';
+    }
+
+    function showSelectionMenu() {
+        // Supprime toute instance existante de la boîte
+        let menu = document.getElementById('customSelectionMenu');
+        if (menu) {
+            menu.remove();
+        }
+
+        menu = document.createElement('div');
+        menu.id = 'customSelectionMenu';
+        Object.assign(menu.style, {
+            position: 'fixed',
+            top: '10px',
+            left: '10px',
+            background: 'white',
+            border: '1px solid black',
+            padding: '10px',
+            zIndex: '10000',
+            fontSize: '14px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '5px',
+            transition: 'opacity 0.3s ease-in-out',
+            width: 'auto',        // On laisse en auto
+            maxWidth: 'none',     // Pas de limite stricte
+            whiteSpace: 'nowrap'  // Évite le retour à la ligne
+        });
+
+        // Titre
+        const title = document.createElement('h3');
+        title.textContent = isCompetitionPage() ? 'Sélection' : `Compétition : ${getSelectedCompetition()}`;
+        menu.appendChild(title);
+
+        // Création du select
+        const select = document.createElement('select');
+        select.setAttribute("size", "6");
+        Object.assign(select.style, {
+            width: "auto",
+            height: "auto",
+            maxWidth: "100%"
+        });
+        menu.appendChild(select);
+
+        // Option par défaut
+        const defaultOption = document.createElement('option');
+        defaultOption.textContent = isCompetitionPage() ? '...' : 'Sélectionner une épreuve';
+        defaultOption.value = '';
+        select.appendChild(defaultOption);
+
+        // Remplit les options
+        function updateOptions() {
+            select.innerHTML = '';
+            select.appendChild(defaultOption);
+            if (isCompetitionPage()) {
+                getAllCompetitions().forEach((comp, index) => {
+                    const option = document.createElement('option');
+                    option.value = index;
+                    // Ajout de la phase dans le texte
+                    option.textContent = `${comp.nom} - ${comp.lieu} - ${comp.phase}`;
+                    select.appendChild(option);
+                });
+            } else if (isEpreuvePage()) {
+                getAllEpreuves().forEach((epreuve, index) => {
+                    const option = document.createElement('option');
+                    option.value = index;
+                    option.textContent = epreuve;
+                    select.appendChild(option);
+                });
+            }
+        }
+        updateOptions();
+
+        // Ajuste la largeur du select selon la plus longue option
+        adaptSelectWidth(select);
+
+        // Création des boutons
+        const buttonContainer = document.createElement('div');
+        Object.assign(buttonContainer.style, {
+            display: "flex",
+            justifyContent: "space-between",
+            gap: "10px"
+        });
+
+        const buttonOK = document.createElement('button');
+        buttonOK.textContent = 'OK';
+        Object.assign(buttonOK.style, {
+            cursor: 'pointer',
+            padding: '5px',
+            background: '#4CAF50',
+            color: 'white',
+            border: 'none',
+            borderRadius: '5px',
+            flexGrow: '1'
+        });
+
+        const buttonClose = document.createElement('button');
+        buttonClose.textContent = 'Fermer';
+        Object.assign(buttonClose.style, {
+            cursor: 'pointer',
+            padding: '5px',
+            background: '#FF5733',
+            color: 'white',
+            border: 'none',
+            borderRadius: '5px',
+            flexGrow: '1'
+        });
+        buttonClose.addEventListener('click', closeSelectionMenu);
+
+        // Sur une page épreuve, ajouter un bouton "Retour Menu"
+        let buttonRetour = null;
+        if (isEpreuvePage()) {
+            buttonRetour = document.createElement('button');
+            buttonRetour.textContent = 'Retour (0)';
+            Object.assign(buttonRetour.style, {
+                cursor: 'pointer',
+                padding: '5px',
+                background: '#2196F3',
+                color: 'white',
+                border: 'none',
+                borderRadius: '5px',
+                flexGrow: '1'
+            });
+            buttonRetour.addEventListener('click', () => {
+                console.log("? Retour Menu via bouton");
+                const retourLink = document.querySelector("#navigation_epreuve > div > a > img");
+                if (retourLink) {
+                    retourLink.focus();
+                    retourLink.click();
+                } else {
+                    console.log("? Bouton 'Retour Menu' introuvable !");
+                }
+            });
+        }
+
+        // Traitement de la sélection
+        function handleSelection() {
+            const selectedValue = select.value;
+            if (selectedValue === '') return;
+            const index = parseInt(selectedValue, 10);
+
+            // Centrer la ligne correspondante
+            const rows = document.querySelectorAll('#main table tbody tr');
+            const row = rows[index];
+            if (row) {
+                row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+
+            // Délai pour laisser le temps au scroll avant l'action
+            setTimeout(() => {
+                if (isCompetitionPage()) {
+                    saveSelectedCompetition(getAllCompetitions()[index].nom);
+                    const link = getAllCompetitionLinks()[index];
+                    if (link) {
+                        console.log(`? Redirection vers ${link.href}`);
+                        link.click();
+                    }
+                } else if (isEpreuvePage()) {
+                    console.log(`? épreuve sélectionnée : ${getAllEpreuves()[index]}`);
+                    const button = getAllEpreuveButtons()[index];
+                    if (button) {
+                        console.log(`? Clic automatique sur l'épreuve sélectionnée.`);
+                        button.focus();
+                        button.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, view: window }));
+                    }
+                }
+                closeSelectionMenu();
+            }, 300);
+        }
+
+        buttonOK.addEventListener('click', handleSelection);
+
+        // Ajout des boutons dans le conteneur (ajouter le bouton Retour si présent)
+        if (buttonRetour) {
+            buttonContainer.appendChild(buttonRetour);
+        }
+        buttonContainer.appendChild(buttonOK);
+        buttonContainer.appendChild(buttonClose);
+        menu.appendChild(buttonContainer);
+
+        document.body.appendChild(menu);
+        select.focus();
+
+        // Gestion du clavier dans la boîte de dialogue
+        select.addEventListener("keydown", function (event) {
+            if (event.key === "ArrowUp") {
+                event.preventDefault();
+                if (select.selectedIndex > 0) {
+                    select.selectedIndex--;
+                }
+            } else if (event.key === "ArrowDown") {
+                event.preventDefault();
+                if (select.selectedIndex < select.options.length - 1) {
+                    select.selectedIndex++;
+                }
+            } else if (event.key === "Enter") {
+                event.preventDefault();
+                handleSelection();
+            }
+            // Touche "0" pour revenir au menu via le lien de retour (sur page épreuve)
+            else if (event.key === "0" && isEpreuvePage()) {
+                event.preventDefault();
+                console.log("? Retour Menu via touche 0");
+                const retourLink = document.querySelector("#navigation_epreuve > div > a > img");
+                if (retourLink) {
+                    retourLink.focus();
+                    retourLink.click();
+                } else {
+                    console.log("? Bouton 'Retour Menu' introuvable !");
+                }
+            }
+        });
+    }
+
+    function getAllCompetitions() {
+        return [...document.querySelectorAll('#main table tbody tr')].map(tr => {
+            return {
+                nom: tr.querySelector('td:nth-child(3)')?.textContent.trim() || 'Compétition inconnue',
+                lieu: tr.querySelector('td:nth-child(4)')?.textContent.trim() || 'Lieu inconnu',
+                // On suppose la phase en colonne 7 par exemple
+                phase: tr.querySelector('td:nth-child(7)')?.textContent.trim() || ''
+            };
+        });
+    }
+
+    function getAllCompetitionLinks() {
+        return [...document.querySelectorAll('#main table tbody tr')].map(tr =>
+            tr.querySelector('td:nth-child(1) > a')
+        );
+    }
+
+    function getAllEpreuves() {
+        return [...document.querySelectorAll('#main table tbody tr')].map(tr =>
+            tr.querySelector('td:first-child')?.textContent.trim() || 'épreuve inconnue'
+        );
+    }
+
+    function getAllEpreuveButtons() {
+        return [...document.querySelectorAll('#main table tbody tr')].map(tr =>
+            tr.querySelector("button")
+        );
+    }
+
+    // Utilisation de la barre d'espace pour afficher le menu de sélection
+    document.addEventListener('keydown', function (event) {
+        if (event.code === 'Space') {
+            event.preventDefault();
+            console.log("? Barre d'espace pressée - Affichage du menu");
+            showSelectionMenu();
+        }
+    });
+
+    // --- Partie 2 : Navigation via les flèches (NextEpreuve / PrevEpreuve) ---
+
+    function waitForFunctions(callback, timeout = 5000) {
+        let timeElapsed = 0;
+        let interval = setInterval(() => {
+            if (typeof NextEpreuve === "function" && typeof PrevEpreuve === "function") {
+                clearInterval(interval);
+                callback();
+            } else {
+                timeElapsed += 500;
+                if (timeElapsed >= timeout) {
+                    clearInterval(interval);
+                    console.log("? Les fonctions ne sont toujours pas disponibles après 5 secondes !");
+                }
+            }
+        }, 500);
+    }
+
+    waitForFunctions(() => {
+        console.log("? Les fonctions NextEpreuve et PrevEpreuve sont prêtes ! Activation du contrôle clavier via flèches.");
+        document.addEventListener("keydown", function (event) {
+            if (event.key === "ArrowRight") {
+                console.log("?? Suivant !");
+                NextEpreuve();
+            } else if (event.key === "ArrowLeft") {
+                console.log("?? Précédent !");
+                PrevEpreuve();
+            }
+        });
+    });
+})();
