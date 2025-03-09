@@ -4,6 +4,7 @@
 // @version      1.3-resizable-local-api
 // @description  Affiche ou masque une fenêtre contenant un QR code. Si l'URL contient "192.168", le QR code est chargé depuis l'adresse locale, sinon pour "compet.ffck.org", il est généré via l'API. La fenêtre est draggable et redimensionnable, et se bascule avec la touche Q.
 // @match        *://*/*
+// @Author       Franck BERNIER
 // @grant        none
 // @run-at       document-end
 // ==/UserScript==
