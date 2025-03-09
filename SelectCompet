@@ -5,6 +5,7 @@
 // @description  Sélectionner une compétition ou une épreuve avec la barre d'espace, naviguer avec les flèches, revenir au menu avec "0", et adapter la largeur du menu à la plus longue ligne de texte.
 // @match        *://*/*
 // @grant        none
+// @author       Franck BERNIER
 // @run-at       document-end
 // ==/UserScript==
 
